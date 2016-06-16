@@ -83,6 +83,7 @@ const createMentionPlugin = (config = {}) => {
     mentionPrefix = '',
     theme = defaultTheme,
     positionSuggestions = defaultPositionSuggestions,
+    newSuggestionText = 'Add new'
   } = config;
   const mentionSearchProps = {
     ariaProps,
@@ -91,6 +92,7 @@ const createMentionPlugin = (config = {}) => {
     store,
     entityMutability: config.entityMutability ? config.entityMutability : 'SEGMENTED',
     positionSuggestions,
+    newSuggestionText
   };
   return {
     MentionSuggestions: decorateComponentWithProps(MentionSuggestions, mentionSearchProps),

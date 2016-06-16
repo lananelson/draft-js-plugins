@@ -1,10 +1,13 @@
 import React, { Component, PropTypes } from 'react';
 
+import { fromJS } from 'immutable';
+
 import Entry from './Entry';
 import addMention from '../modifiers/addMention';
 import decodeOffsetKey from '../utils/decodeOffsetKey';
 import { genKey } from 'draft-js';
 import getSearchText from '../utils/getSearchText';
+
 
 export default class MentionSuggestions extends Component {
 
@@ -18,7 +21,7 @@ export default class MentionSuggestions extends Component {
 
   state = {
     isActive: false,
-    focusedOptionIndex: 0,
+    focusedOptionIndex: -1,
   };
 
   componentWillMount() {
@@ -26,10 +29,11 @@ export default class MentionSuggestions extends Component {
     this.props.callbacks.onChange = this.onEditorStateChange;
   }
 
-  componentWillReceiveProps(nextProps) {
-    if (nextProps.suggestions.size === 0 && this.state.isActive) {
-      this.closeDropdown();
-    }
+  componentWillReceiveProps() {
+    // if (nextProps.suggestions.size === 0 && this.state.isActive) {
+    //   console.log('closeDropdown: nextProps.suggestions.size === 0 && this.state.isActive');
+    //   this.closeDropdown();
+    // }
   }
 
   componentDidUpdate = (prevProps, prevState) => {
@@ -43,6 +47,7 @@ export default class MentionSuggestions extends Component {
           focusedOptionIndex: size - 1,
         });
       }
+
 
       const decoratorRect = this.props.store.getPortalClientRect(this.activeOffsetKey);
       const newStyles = this.props.positionSuggestions({
@@ -66,9 +71,9 @@ export default class MentionSuggestions extends Component {
     const searches = this.props.store.getAllSearches();
 
     // if no search portal is active there is no need to show the popover
-    if (searches.size === 0) {
-      return editorState;
-    }
+    // if (searches.size === 0) {
+    //   return editorState;
+    // }
 
     const removeList = () => {
       this.props.store.resetEscapedSearch();
@@ -86,7 +91,7 @@ export default class MentionSuggestions extends Component {
     // identify the start & end positon of each search-text
     const offsetDetails = searches.map((offsetKey) => decodeOffsetKey(offsetKey));
 
-    // a leave can be empty when it is removed due e.g. using backspace
+    // a leaf can be empty when it is removed due e.g. using backspace
     const leaves = offsetDetails.map(({ blockKey, decoratorKey, leafKey }) => (
       editorState
         .getBlockTree(blockKey)
@@ -128,6 +133,8 @@ export default class MentionSuggestions extends Component {
     // input field and then comes back: the dropdown will again.
     if (!this.state.isActive && !this.props.store.isEscaped(this.activeOffsetKey)) {
       this.openDropdown();
+    } else {
+      this.openDropdown();
     }
 
     // makes sure the focused index is reseted every time a new selection opens
@@ -135,7 +142,7 @@ export default class MentionSuggestions extends Component {
     if (this.lastSelectionIsInsideWord === undefined ||
         !selectionIsInsideWord.equals(this.lastSelectionIsInsideWord)) {
       this.setState({
-        focusedOptionIndex: 0,
+        focusedOptionIndex: -1,
       });
     }
 
@@ -156,7 +163,7 @@ export default class MentionSuggestions extends Component {
   onDownArrow = (keyboardEvent) => {
     keyboardEvent.preventDefault();
     const newIndex = this.state.focusedOptionIndex + 1;
-    this.onMentionFocus(newIndex >= this.props.suggestions.size ? 0 : newIndex);
+    this.onMentionFocus(newIndex >= this.props.suggestions.size ? -1 : newIndex);
   };
 
   onTab = (keyboardEvent) => {
@@ -168,7 +175,7 @@ export default class MentionSuggestions extends Component {
     keyboardEvent.preventDefault();
     if (this.props.suggestions.size > 0) {
       const newIndex = this.state.focusedOptionIndex - 1;
-      this.onMentionFocus(Math.max(newIndex, 0));
+      this.onMentionFocus(Math.max(newIndex, -1));
     }
   };
 
@@ -196,6 +203,44 @@ export default class MentionSuggestions extends Component {
     this.props.store.setEditorState(newEditorState);
   };
 
+  onEmptyMentionSelect = () => {
+    this.closeDropdown();
+
+    const blockMap = this.props.store.getEditorState().getCurrentContent().getBlockMap();
+
+    let newTagText = '';
+
+    blockMap.forEach(b => {
+      let lastEntityIndex = -1;
+
+      b.findEntityRanges(
+        (character) => {
+          const entityKey = character.getEntity();
+          return (
+            entityKey !== null
+          );
+        },
+        (start, end) => {
+          lastEntityIndex = end;
+        }
+      );
+
+      newTagText = b.getText().substr(lastEntityIndex + 1).trim();
+    });
+
+    if (newTagText) {
+      const newEditorState = addMention(
+        this.props.store.getEditorState(),
+        fromJS({
+          name: newTagText,
+          link: 'https://twitter.com/addtaglink'
+        }),
+        this.props.entityMutability,
+      );
+      this.props.store.setEditorState(newEditorState);
+    }
+  };
+
   onMentionFocus = (index) => {
     const descendant = `mention-option-${this.key}-${index}`;
     this.props.ariaProps.ariaActiveDescendantID = descendant;
@@ -206,7 +251,12 @@ export default class MentionSuggestions extends Component {
   };
 
   commitSelection = () => {
-    this.onMentionSelect(this.props.suggestions.get(this.state.focusedOptionIndex));
+    if (this.state.focusedOptionIndex >= 0) {
+      this.onMentionSelect(this.props.suggestions.get(this.state.focusedOptionIndex));
+    } else {
+      this.onEmptyMentionSelect();
+    }
+
     return true;
   };
 
@@ -260,7 +310,12 @@ export default class MentionSuggestions extends Component {
       return <noscript />;
     }
 
-    const { theme = {} } = this.props;
+    const { theme = {}, newSuggestionText } = this.props;
+
+    const emptyMention = fromJS({
+      name: newSuggestionText,
+    });
+
     return (
       <div
         {...this.props}
@@ -269,13 +324,23 @@ export default class MentionSuggestions extends Component {
         id={ `mentions-list-${this.key}` }
         ref="popover"
       >
+        <Entry
+          key={ 'add-new' }
+          onMentionSelect={ this.onEmptyMentionSelect }
+          onMentionFocus={ () => this.onMentionFocus(-1) }
+          isFocused={ this.state.focusedOptionIndex === -1 }
+          mention={emptyMention}
+          index={ -1 }
+          id={ `mention-option-${this.key}-${-1}` }
+          theme={ theme }
+        />
         {
           this.props.suggestions.map((mention, index) => (
             <Entry
               key={ mention.get('name') }
               onMentionSelect={ this.onMentionSelect }
               onMentionFocus={ this.onMentionFocus }
-              isFocused={ this.state.focusedOptionIndex === index }
+              isFocused={ this.state.focusedOptionIndex === (index) }
               mention={ mention }
               index={ index }
               id={ `mention-option-${this.key}-${index}` }

@@ -5,7 +5,10 @@ import createMentionPlugin, { defaultSuggestionsFilter } from 'draft-js-mention-
 import editorStyles from './editorStyles.css';
 import mentions from './mentions';
 
-const mentionPlugin = createMentionPlugin();
+const mentionPlugin = createMentionPlugin({
+  entityMutability: 'IMMUTABLE',
+  newSuggestionText: 'Add new person',
+});
 const { MentionSuggestions } = mentionPlugin;
 const plugins = [mentionPlugin];
 
